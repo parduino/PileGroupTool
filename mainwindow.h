@@ -13,8 +13,15 @@ class QNetworkAccessManager;
 #define MAXPILES 3
 #define MAXLAYERS 3
 
+// Meshing parameters
+#define MIN_ELEMENTS_PER_LAYER   15
+#define MAX_ELEMENTS_PER_LAYER   40
+#define NUM_ELEMENTS_IN_AIR       4
+
 // #define MAX_FORCE 5000.0
-#define MAX_FORCE 10000.0
+#define MAX_FORCE  10000.0
+#define MAX_MOMENT 25000.0
+#define MAX_DISP   2.0
 
 // global constants
 #define GAMMA_WATER 9.81
@@ -69,7 +76,6 @@ public:
     void doAnalysis(void);
     void fetchSettings();
     void updateUI();
-    void updateSystemPlot();
     void setActiveLayer(int);
     void updateLayerState();
     int  findActiveLayer();
@@ -109,7 +115,10 @@ private slots:
     void on_chkBox_include_toe_resistance_clicked(bool checked);
 
     // geometry parameters entered/changed
-    void on_displacementSlider_valueChanged(int value);
+    void on_horizontalForceSlider_valueChanged(int value);
+    void on_verticalForceSlider_valueChanged(int value);
+    void on_momentSlider_valueChanged(int value);
+
     void on_pileDiameter_valueChanged(double arg1);
     void on_embeddedLength_valueChanged(double arg1);
     void on_freeLength_valueChanged(double arg1);
@@ -122,9 +131,9 @@ private slots:
     void on_systemPlot_selectionChangedByUser();
 
     // material table slots
-    void on_appliedForce_valueChanged(double arg1);
-    void on_appliedForce_editingFinished();
-    void on_updateInfo(QTableWidgetItem *);
+    void on_appliedHorizontalForce_editingFinished();
+    void on_appliedVerticalForce_editingFinished();
+    void on_appliedMoment_editingFinished();
 
     // layer selection slots
     void on_chkBox_layer1_clicked();
@@ -144,18 +153,45 @@ private slots:
     // Frank's network counter
     void replyFinished(QNetworkReply*);
 
+    void on_forceTypeSelector_activated(int index);
+    void on_pushoverDisplacement_editingFinished();
+    void on_pulloutDisplacement_editingFinished();
+    void on_pushoverDisplacementSlider_valueChanged(int value);
+    void on_pulloutDisplacementSlider_valueChanged(int value);
+    void on_surfaceDisplacement_editingFinished();
+    void on_surfaceDisplacementSlider_valueChanged(int value);
+    void on_Interface12_editingFinished();
+    void on_Interface12Slider_valueChanged(int value);
+    void on_Interface23_editingFinished();
+    void on_Interface23Slider_valueChanged(int value);
+    void on_BaseDisplacement_editingFinished();
+    void on_BaseDisplacementSlider_valueChanged(int value);
 
 private:
     Q_OBJECT
     Ui::MainWindow *ui;
 
-    int ReadFile(QString );
-    int WriteFile(QString );
+    void updateSystemPlot();
+    void refreshUI();
+    bool ReadFile(QString );
+    bool WriteFile(QString );
 
-    // get data
+    // load control
+    QString loadControlType;
+
     double P;     // lateral force on pile cap
     double PV;    // vertical force on pile cap
     double PMom;  // applied moment on pile cap
+
+    double HDisp; // prescribed horizontal displacement
+    double VDisp; // prescriber vertical displacement
+
+    double surfaceDisp;    // prescribed soil surface displacement
+    double percentage12;   // percentage of surface displacement at 1st layer interface
+    double percentage23;   // percentage of surface displacement at 2nd layer interface
+    double percentageBase; // percentage of surface displacement at base of soil column
+
+    // get parameters
     double gwtDepth;  // depth of ground water table below the surface
     int    numPileElements;
     int    numPiles;
@@ -209,9 +245,9 @@ private:
     bool showY50;
 
     // meshing parameters
-    int minElementsPerLayer = 15;
-    int maxElementsPerLayer = 40;
-    int numElementsInAir    =  4;
+    int minElementsPerLayer = MIN_ELEMENTS_PER_LAYER;
+    int maxElementsPerLayer = MAX_ELEMENTS_PER_LAYER;
+    int numElementsInAir    = NUM_ELEMENTS_IN_AIR;
 
     double L1;                      // pile length above ground (all the same)
     double L2[MAXPILES];            // embedded length of pile

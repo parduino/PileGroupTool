@@ -5,7 +5,19 @@
 #include "utilWindows/dialogpreferences.h"
 #include "utilWindows/dialogabout.h"
 #include "utilWindows/dialogfuturefeature.h"
+
 #include <QApplication>
+#include <QtNetwork/QNetworkAccessManager>
+#include <QtNetwork/QNetworkReply>
+#include <QtNetwork/QNetworkRequest>
+#include <QDateTime>
+#include <QFileDialog>
+#include <QDir>
+
+#include <QJsonDocument>
+#include <QJsonArray>
+#include <QJsonObject>
+#include <QJsonValue>
 
 extern int getTzParam(double phi, double b, double sigV, double pEleLength, double *tult, double *z50);
 extern int getQzParam(double phiDegree, double b, double sigV, double G, double *qult, double *z50);
@@ -54,12 +66,6 @@ extern int getPyParam(double pyDepth,
 
 #include <soilmat.h>
 
-#include <QtNetwork/QNetworkAccessManager>
-#include <QtNetwork/QNetworkReply>
-#include <QtNetwork/QNetworkRequest>
-
-#include <QDateTime>
-
 StandardStream sserr;
 OPS_Stream *opserrPtr = &sserr;
 Domain theDomain;
@@ -76,8 +82,8 @@ MainWindow::MainWindow(QWidget *parent) :
     this->fetchSettings();
     this->updateUI();
     ui->headerWidget->setHeadingText("SimCenter Pile Group Tool");
-    ui->appliedForce->setMaximum(MAX_FORCE);
-    ui->appliedForce->setMinimum(-MAX_FORCE);
+    ui->appliedHorizontalForce->setMaximum(MAX_FORCE);
+    ui->appliedHorizontalForce->setMinimum(-MAX_FORCE);
 
     ui->textBrowser->clear();
 #ifdef Q_OS_WIN
@@ -93,6 +99,14 @@ MainWindow::MainWindow(QWidget *parent) :
     P        = 1000.0;
     PV       =    0.0;
     PMom     =    0.0;
+
+    HDisp = 0.0; // prescribed horizontal displacement
+    VDisp = 0.0; // prescriber vertical displacement
+
+    surfaceDisp = 0.0;    // prescribed soil surface displacement
+    percentage12 = 1.0;   // percentage of surface displacement at 1st layer interface
+    percentage23 = 0.0;   // percentage of surface displacement at 2nd layer interface
+    percentageBase = 0.0; // percentage of surface displacement at base of soil column
 
     L1                       = 1.0;
     L2[numPiles-1]           = 20.0;
@@ -124,24 +138,7 @@ MainWindow::MainWindow(QWidget *parent) :
     setActiveLayer(0);
 
     // set up pile input
-
-    ui->pileIndex->setValue(1);
-    ui->pileIndex->setMinimum(1);
-    ui->pileIndex->setMaximum(numPiles);
-
-    int pileIdx = ui->pileIndex->value() - 1;
-
-    ui->appliedForce->setValue(P);
-    ui->xOffset->setValue(xOffset[pileIdx]);
-    ui->pileDiameter->setValue(pileDiameter[pileIdx]);
-    ui->freeLength->setValue(L1);
-    ui->embeddedLength->setValue(L2[pileIdx]);
-    ui->Emodulus->setValue( (E[pileIdx]/1.0e+6) );
-
-    ui->groundWaterTable->setValue(gwtDepth);
-
-    ui->chkBox_assume_rigid_cap->setCheckState(assumeRigidPileHeadConnection?Qt::Checked:Qt::Unchecked);
-    ui->chkBox_include_toe_resistance->setCheckState(useToeResistance?Qt::Checked:Qt::Unchecked);
+    this->refreshUI();
 
 
     // add legend
@@ -189,6 +186,41 @@ MainWindow::MainWindow(QWidget *parent) :
 MainWindow::~MainWindow()
 {
     delete ui;
+}
+
+void MainWindow::refreshUI() {
+
+    inSetupState = true;
+
+    ui->pileIndex->setValue(1);
+    ui->pileIndex->setMinimum(1);
+    ui->pileIndex->setMaximum(numPiles);
+
+    if (loadControlType == "forceControl") { ui->forceTypeSelector->setCurrentIndex(0); }
+    else if (loadControlType == "pushOver") { ui->forceTypeSelector->setCurrentIndex(1); }
+    else if (loadControlType == "soilMotion") { ui->forceTypeSelector->setCurrentIndex(2); }
+    else { ui->forceTypeSelector->setCurrentIndex(0); }
+
+    ui->appliedHorizontalForce->setValue(P);
+    ui->appliedVerticalForce->setValue(PV);
+    ui->appliedMoment->setValue(PMom);
+
+    int pileIdx = ui->pileIndex->value() - 1;
+
+    ui->xOffset->setValue(xOffset[pileIdx]);
+    ui->pileDiameter->setValue(pileDiameter[pileIdx]);
+    ui->freeLength->setValue(L1);
+    ui->embeddedLength->setValue(L2[pileIdx]);
+    ui->Emodulus->setValue( (E[pileIdx]/1.0e+6) );
+
+    ui->groundWaterTable->setValue(gwtDepth);
+
+    ui->chkBox_assume_rigid_cap->setCheckState(assumeRigidPileHeadConnection?Qt::Checked:Qt::Unchecked);
+    ui->chkBox_include_toe_resistance->setCheckState(useToeResistance?Qt::Checked:Qt::Unchecked);
+
+    this->updateLayerState();
+
+    inSetupState = false;
 }
 
 void MainWindow::doAnalysis(void)
@@ -923,9 +955,9 @@ void MainWindow::on_chkBox_include_toe_resistance_clicked(bool checked)
 void MainWindow::setupLayers()
 {
     mSoilLayers.clear();
-    mSoilLayers.push_back(soilLayer("Layer 1", 3.0, 15.0, 18.0, 2.0e5, 30, QColor(100,0,0,100)));
-    mSoilLayers.push_back(soilLayer("Layer 2", 3.0, 16.0, 19.0, 2.0e5, 35, QColor(0,100,0,100)));
-    mSoilLayers.push_back(soilLayer("Layer 3", 4.0, 14.0, 17.0, 2.0e5, 25, QColor(0,0,100,100)));
+    mSoilLayers.push_back(soilLayer("Layer 1", 3.0, 15.0, 18.0, 2.0e5, 30, 0.0, QColor(100,0,0,100)));
+    mSoilLayers.push_back(soilLayer("Layer 2", 3.0, 16.0, 19.0, 2.0e5, 35, 0.0, QColor(0,100,0,100)));
+    mSoilLayers.push_back(soilLayer("Layer 3", 4.0, 14.0, 17.0, 2.0e5, 25, 0.0, QColor(0,0,100,100)));
 
     updateLayerState();
 }
@@ -944,62 +976,6 @@ void MainWindow::updateLayerState()
         if (ii > 0)
             mSoilLayers[ii].setLayerTopStress(mSoilLayers[ii-1].getLayerBottomStress());
     }
-}
-
-void MainWindow::on_updateInfo(QTableWidgetItem * item)
-{
-    //if (item && item == ui->matTable->currentItem()) {
-    double value = item->text().toDouble();
-
-    if(item->row() == 0) {
-        if (value < 0.10) {
-            value = 0.10;
-            item->setText(QString("%1").arg(value));
-        }
-        mSoilLayers[item->column()].setLayerThickness(value);
-    }
-    else if (item->row() == 1) {
-        if (value < 0.50) {
-            value = 0.50;
-            item->setText(QString("%1").arg(value));
-        }
-        mSoilLayers[item->column()].setLayerUnitWeight(value);
-    }
-    else if (item->row() == 2) {
-        if (value < GAMMA_WATER) {
-            value = GAMMA_WATER;
-            item->setText(QString("%1").arg(value));
-        }
-        mSoilLayers[item->column()].setLayerSatUnitWeight(value);
-    }
-    else if (item->row() == 3) {
-        if (value < 5.) {
-            value = 5.;
-            item->setText(QString("%1").arg(value));
-        }
-        mSoilLayers[item->column()].setLayerFrictionAng(value);
-    }
-    else if (item->row() == 4) {
-        if (value < 1000.) {
-            value = 1000.;
-            item->setText(QString("%1").arg(value));
-        }
-        mSoilLayers[item->column()].setLayerStiffness(value);
-    }
-
-    // set depth and GWT depth for each layer
-    //int numLayers = mSoilLayers.size();
-    double layerDepthFromSurface = 0.0;
-    for (int ii = 0; ii < MAXLAYERS; ii++)
-    {
-        mSoilLayers[ii].setLayerDepth(layerDepthFromSurface);
-        mSoilLayers[ii].setGWTdepth(gwtDepth - layerDepthFromSurface);
-        layerDepthFromSurface += mSoilLayers[ii].getLayerThickness();
-        if (ii > 0)
-            mSoilLayers[ii].setLayerTopStress(mSoilLayers[ii-1].getLayerBottomStress());
-    }
-
-    this->doAnalysis();
 }
 
 void MainWindow::updateUI()
@@ -1056,18 +1032,16 @@ void MainWindow::on_actionNew_triggered()
 
 void MainWindow::on_action_Open_triggered()
 {
-    DialogFutureFeature *dlg = new DialogFutureFeature();
-    dlg->exec();
-    delete dlg;
+    if ( this->ReadFile("PileTool.json") ) {
+        this->refreshUI();
+        this->updateSystemPlot();
+        this->doAnalysis();
+    }
 }
 
 void MainWindow::on_actionSave_triggered()
 {
     this->WriteFile("PileTool.json");
-
-    DialogFutureFeature *dlg = new DialogFutureFeature();
-    dlg->exec();
-    delete dlg;
 }
 
 void MainWindow::on_actionExport_to_OpenSees_triggered()
@@ -1090,6 +1064,14 @@ void MainWindow::on_actionReset_triggered()
     PV       =    0.0;
     PMom     =    0.0;
 
+    HDisp = 0.0; // prescribed horizontal displacement
+    VDisp = 0.0; // prescriber vertical displacement
+
+    surfaceDisp = 0.0;    // prescribed soil surface displacement
+    percentage12 = 1.0;   // percentage of surface displacement at 1st layer interface
+    percentage23 = 0.0;   // percentage of surface displacement at 2nd layer interface
+    percentageBase = 0.0; // percentage of surface displacement at base of soil column
+
     L1                       = 1.0;
     L2[numPiles-1]           = 20.0;
     pileDiameter[numPiles-1] = 1.0;
@@ -1111,6 +1093,11 @@ void MainWindow::on_actionReset_triggered()
     // analysis parameters
     displacementRatio = 0.0;
 
+    // meshing parameters
+    minElementsPerLayer = MIN_ELEMENTS_PER_LAYER;
+    maxElementsPerLayer = MAX_ELEMENTS_PER_LAYER;
+    numElementsInAir    = NUM_ELEMENTS_IN_AIR;
+
     // set up initial values before activating live analysis (= connecting the slots)
     //    or the program will fail in the analysis due to missing information
     setupLayers();
@@ -1127,7 +1114,7 @@ void MainWindow::on_actionReset_triggered()
 
     int pileIdx = ui->pileIndex->value() - 1;
 
-    ui->appliedForce->setValue(P);
+    ui->appliedHorizontalForce->setValue(P);
     ui->xOffset->setValue(xOffset[pileIdx]);
     ui->pileDiameter->setValue(pileDiameter[pileIdx]);
     ui->freeLength->setValue(L1);
@@ -1292,49 +1279,6 @@ void MainWindow::on_groundWaterTable_valueChanged(double arg1)
     this->updateSystemPlot();
 }
 
-/* ***** loading parameter changes ***** */
-
-void MainWindow::on_appliedForce_valueChanged(double arg1)
-{
-    //P = ui->appliedForce->value();
-    P = arg1;
-
-    int sliderPosition = nearbyint(100.*P/MAX_FORCE);
-    if (sliderPosition >  100) sliderPosition= 100;
-    if (sliderPosition < -100) sliderPosition=-100;
-    ui->displacementSlider->setValue(sliderPosition);
-    //qDebug() << "valueChanged:: Force value: " << P << ",  sliderPosition: " << sliderPosition << endln;
-
-    this->doAnalysis();
-}
-
-void MainWindow::on_appliedForce_editingFinished()
-{
-    P = ui->appliedForce->value();
-
-    int sliderPosition = nearbyint(100.*P/MAX_FORCE);
-    if (sliderPosition >  100) sliderPosition= 100;
-    if (sliderPosition < -100) sliderPosition=-100;
-
-    //qDebug() << "editingFinished:: Force value: " << P << ",  sliderPosition: " << sliderPosition << endln;
-    ui->displacementSlider->setSliderPosition(sliderPosition);
-
-    this->doAnalysis();
-}
-
-void MainWindow::on_displacementSlider_valueChanged(int value)
-{
-    // slider moved -- the number of steps (100) is a parameter to the slider in mainwindow.ui
-    displacementRatio = double(value)/100.0;
-
-    P = MAX_FORCE * displacementRatio;
-
-    //qDebug() << "Force value: " << P << ",  sliderPosition: " << value << endln;
-    ui->appliedForce->setValue(P);
-
-    this->doAnalysis();
-    this->updateSystemPlot();
-}
 
 //
 // layer properties and setup methods
@@ -1680,8 +1624,6 @@ void MainWindow::updateSystemPlot() {
         water->setBrush(QBrush(GROUND_WATER_BLUE));
 
         water->setName(QString("groundwater"));
-
-        //ui->systemPlot->addPlottable(water);
     }
 
     // plot the pile cap
@@ -1747,6 +1689,18 @@ void MainWindow::updateSystemPlot() {
         arrow->setPen(QPen(Qt::red, 3));
         arrow->start->setCoords(xbar, L1);
         arrow->end->setCoords(xbar + force, L1);
+        arrow->setHead(QCPLineEnding::esSpikeArrow);
+    }
+
+    if (ABS(PV) > 0.0) {
+        double force = 0.45*W*PV/MAX_FORCE;
+
+        // add the arrow:
+        QCPItemLine *arrow = new QCPItemLine(ui->systemPlot);
+        //ui->systemPlot->addItem(arrow);
+        arrow->setPen(QPen(Qt::red, 3));
+        arrow->start->setCoords(xbar, L1 - force);
+        arrow->end->setCoords(xbar, L1);
         arrow->setHead(QCPLineEnding::esSpikeArrow);
     }
 
@@ -1850,14 +1804,200 @@ void MainWindow::on_actionProvide_Feedback_triggered()
 
 }
 
-int MainWindow::ReadFile(QString s)
+bool MainWindow::ReadFile(QString s)
 {
-    return 0;
+    /* identify filename and location for loading */
+
+    //QString filename = "PileGroupTool.json";
+
+    QString theFolder = QDir::homePath();
+    QString theFilter = "Json file (*.json)";
+    QFileDialog dlg;
+
+    QString filename = dlg.getOpenFileName(this, "Load file", theFolder, theFilter);
+
+    qWarning() << filename;
+
+    /* load JSON object from file */
+    QFile loadFile;
+    loadFile.setFileName(filename);
+
+    if (!loadFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        qWarning("Couldn't open load file.");
+        return false;
+    }
+
+    QString theFile = loadFile.readAll();
+    loadFile.close();
+
+    //qWarning() << theFile;
+
+    bool fileTypeError = false;
+
+    QJsonDocument infoDoc = QJsonDocument::fromJson(theFile.toUtf8());
+
+    /* start a JSON object to represent the system */
+    QJsonObject json = infoDoc.object();
+
+    QString creator;
+    creator  = json["creator"].toString();
+
+    if (creator != "PileGroupTool") fileTypeError = true;
+
+    QString version;
+    version  = json["version"].toString();
+
+    fileTypeError = true;
+    if (version == "1.0")   fileTypeError = false;
+    if (version == "1.99")  fileTypeError = false;
+    if (version == "2.0")   fileTypeError = false;
+
+    if (fileTypeError) {
+        QMessageBox msg(QMessageBox::Information, "Info", "Not a valid model file.");
+        msg.exec();
+        return false;
+    }
+
+    QString username;
+    username = json["username"].toString();
+    QString author;
+    author   = json["author"].toString();
+    QString filedate;
+    filedate = json["date"].toString();
+
+    /* write layer information */
+    QJsonArray layerInfo = json["layers"].toArray();
+
+    int nLayer = 0;
+
+    foreach (QJsonValue jval, layerInfo) {
+
+        QJsonObject aLayer = jval.toObject();
+
+        mSoilLayers[nLayer].setLayerDepth(aLayer["depth"].toDouble());
+        mSoilLayers[nLayer].setLayerThickness(aLayer["thickness"].toDouble());
+        mSoilLayers[nLayer].setLayerUnitWeight(aLayer["gamma"].toDouble());
+        mSoilLayers[nLayer].setLayerSatUnitWeight(aLayer["gammaSaturated"].toDouble());
+        mSoilLayers[nLayer].setLayerFrictionAng(aLayer["phi"].toDouble());
+        mSoilLayers[nLayer].setLayerCohesion(aLayer["cohesion"].toDouble());
+        mSoilLayers[nLayer].setLayerStiffness(aLayer["Gmodulus"].toDouble());
+
+        nLayer++;
+        if (nLayer >= MAXLAYERS)  break;
+    }
+
+    while (nLayer+1 < MAXLAYERS) {
+        /* fill layer array with identical layer properties */
+        mSoilLayers[nLayer+1].setLayerDepth(mSoilLayers[nLayer].getLayerDepth());
+        mSoilLayers[nLayer+1].setLayerThickness(mSoilLayers[nLayer].getLayerThickness());
+        mSoilLayers[nLayer+1].setLayerUnitWeight(mSoilLayers[nLayer].getLayerUnitWeight());
+        mSoilLayers[nLayer+1].setLayerSatUnitWeight(mSoilLayers[nLayer].getLayerSatUnitWeight());
+        mSoilLayers[nLayer+1].setLayerFrictionAng(mSoilLayers[nLayer].getLayerFrictionAng());
+        mSoilLayers[nLayer+1].setLayerCohesion(mSoilLayers[nLayer].getLayerCohesion());
+        mSoilLayers[nLayer+1].setLayerStiffness(mSoilLayers[nLayer].getLayerStiffness());
+
+        nLayer++;
+    }
+
+    double groundWaterTable = json["groundWaterTable"].toDouble();
+    if (groundWaterTable < 0.0) groundWaterTable = 0.0;
+    gwtDepth = groundWaterTable;
+
+    /* write pile information */
+    QJsonArray pileInfo = json["piles"].toArray();
+
+    int nPile = 0;
+
+    foreach (QJsonValue jval, pileInfo) {
+        QJsonObject aPile = jval.toObject();
+
+        L2[nPile]           = aPile["embeddedLength"].toDouble();
+        L1                  = aPile["freeLength"].toDouble();
+        pileDiameter[nPile] = aPile["diameter"].toDouble();
+        E[nPile]            = aPile["YoungsModulus"].toDouble();
+        xOffset[nPile]      = aPile["xOffset"].toDouble();
+
+        nPile++;
+        if (nPile >= MAXPILES) break;
+    }
+
+    numPiles = nPile;
+
+    useToeResistance              = json["useToeResistance"].toBool();
+    assumeRigidPileHeadConnection = json["assumeRigidPileHeadConnection"].toBool();
+
+
+    /* read load information */
+    if (version == "1.0")
+    {
+        QJsonObject loadInfo = json["loads"].toObject();
+
+        P    = loadInfo["HForce"].toDouble();
+        PV   = loadInfo["VForce"].toDouble();
+        PMom = loadInfo["Moment"].toDouble();
+
+        HDisp = 0.0;
+        VDisp = 0.0;
+
+        surfaceDisp  = 0.0;
+        percentage12 = 100.;
+        percentage23 = 0.0;
+        percentageBase = 0.0;
+
+        loadControlType = "forceControl";
+    }
+    else if (version == "1.99" || version == "2.0")
+    {
+        QJsonObject loadInfo = json["loads"].toObject();
+        QJsonObject forceControlObj = loadInfo["forceControl"].toObject();
+        QJsonObject pushOverObj     = loadInfo["pushOver"].toObject();
+        QJsonObject soilMotionObj   = loadInfo["soilMotion"].toObject();
+
+        loadControlType = loadInfo["loadControlType"].toString();
+
+        P    = forceControlObj["HForce"].toDouble();
+        PV   = forceControlObj["VForce"].toDouble();
+        PMom = forceControlObj["Moment"].toDouble();
+
+        HDisp = pushOverObj["HDisp"].toDouble();
+        VDisp = pushOverObj["VDisp"].toDouble();
+
+        surfaceDisp    = soilMotionObj["surfaceDisp"].toDouble();
+        percentage12   = soilMotionObj["percentage12"].toDouble();
+        percentage23   = soilMotionObj["percentage23"].toDouble();
+        percentageBase = soilMotionObj["percentageBase"].toDouble();
+    }
+
+    /* FEA parameters */
+    QJsonObject FEAparameters = json["FEAparameters"].toObject();
+
+    minElementsPerLayer = FEAparameters["minElementsPerLayer"].toInt();
+    maxElementsPerLayer = FEAparameters["maxElementsPerLayer"].toInt();
+    numElementsInAir    = FEAparameters["numElementsInAir"].toInt();
+
+    if (minElementsPerLayer < MIN_ELEMENTS_PER_LAYER)   minElementsPerLayer = MIN_ELEMENTS_PER_LAYER;
+    if (maxElementsPerLayer > 3*MAX_ELEMENTS_PER_LAYER) maxElementsPerLayer = 3*MAX_ELEMENTS_PER_LAYER;
+    if (numElementsInAir < NUM_ELEMENTS_IN_AIR)         numElementsInAir = NUM_ELEMENTS_IN_AIR;
+    if (numElementsInAir > MAX_ELEMENTS_PER_LAYER)      numElementsInAir = MAX_ELEMENTS_PER_LAYER;
+
+    return true;
 }
 
-int MainWindow::WriteFile(QString s)
+bool MainWindow::WriteFile(QString s)
 {
-    int cnt = 0;
+    /* identify filename and location for saving */
+
+    QString path = QDir::homePath();
+    QDir d;
+    d.setPath(path);
+    QString filename = d.filePath("PileGroupTool.json");
+    QString theFilter = "Json file (*.json)";
+    QFileDialog dlg;
+
+    filename = dlg.getSaveFileName(this, "Save file", filename, theFilter );
+
+    // check if cancelled
+    if (filename.isEmpty()) return false;
 
     /* start a JSON object to represent the system */
     QJsonObject *json = new QJsonObject();
@@ -1882,7 +2022,7 @@ int MainWindow::WriteFile(QString s)
         aLayer.insert("gamma", mSoilLayers[lid].getLayerUnitWeight());
         aLayer.insert("gammaSaturated", mSoilLayers[lid].getLayerSatUnitWeight());
         aLayer.insert("phi", mSoilLayers[lid].getLayerFrictionAng());
-        aLayer.insert("cohesion", 0.0);
+        aLayer.insert("cohesion", mSoilLayers[lid].getLayerCohesion());
         aLayer.insert("Gmodulus", mSoilLayers[lid].getLayerStiffness());
 
         layerInfo->append(aLayer);
@@ -1911,12 +2051,49 @@ int MainWindow::WriteFile(QString s)
     json->insert("useToeResistance", useToeResistance);
     json->insert("assumeRigidPileHeadConnection", assumeRigidPileHeadConnection);
 
+
+
+
     /* write load information */
     QJsonObject *loadInfo = new QJsonObject();
 
-    loadInfo->insert("HForce", P);
-    loadInfo->insert("VForce", PV);
-    loadInfo->insert("Moment", PMom);
+    int selection = ui->forceTypeSelector->currentIndex();
+    QString loadType;
+
+    switch (selection)
+    {
+    case 0:
+        loadType = "forceControl";
+        break;
+    case 1:
+        loadType = "pushOver";
+        break;
+    case 2:
+        loadType = "soilMotion";
+        break;
+    default:
+        qWarning() << "cannot identify the loadControlType";
+    }
+
+    loadInfo->insert("loadControlType", loadType);
+
+    QJsonObject *forceControlObj = new QJsonObject();
+    forceControlObj->insert("HForce", P);
+    forceControlObj->insert("VForce", PV);
+    forceControlObj->insert("Moment", PMom);
+    loadInfo->insert("forceControl", *forceControlObj);
+
+    QJsonObject *pushOverObj     = new QJsonObject();
+    pushOverObj->insert("HDisp", HDisp);
+    pushOverObj->insert("VDisp", VDisp);
+    loadInfo->insert("pushOver", *pushOverObj);
+
+    QJsonObject *soilMotionObj   = new QJsonObject();
+    soilMotionObj->insert("surfaceDisp", surfaceDisp);
+    soilMotionObj->insert("percentage12", percentage12);
+    soilMotionObj->insert("percentage23", percentage23);
+    soilMotionObj->insert("percentageBase", percentageBase);
+    loadInfo->insert("soilMotion", *soilMotionObj);
 
     json->insert("loads", *loadInfo);
 
@@ -1933,7 +2110,7 @@ int MainWindow::WriteFile(QString s)
 
     /* write JSON object to file */
 
-    QFile saveFile( QStringLiteral("save.json") );
+    QFile saveFile( filename );
 
     if (!saveFile.open(QIODevice::WriteOnly)) {
         qWarning("Couldn't open save file.");
@@ -1947,9 +2124,12 @@ int MainWindow::WriteFile(QString s)
     delete layerInfo;
     delete pileInfo;
     delete loadInfo;
+    delete forceControlObj;
+    delete pushOverObj;
+    delete soilMotionObj;
     delete json;
 
-    return cnt;
+    return true;
 }
 
 
@@ -1959,3 +2139,254 @@ void MainWindow::replyFinished(QNetworkReply *pReply)
 }
 
 
+
+void MainWindow::on_forceTypeSelector_activated(int index)
+{
+    ui->loadTypesStack->setCurrentIndex(index);
+}
+
+
+/* ***** loading parameter changes ***** */
+
+void MainWindow::on_appliedHorizontalForce_editingFinished()
+{
+    P = ui->appliedHorizontalForce->value();
+
+    int sliderPosition = nearbyint(100.*P/MAX_FORCE);
+    if (sliderPosition >  100) sliderPosition= 100;
+    if (sliderPosition < -100) sliderPosition=-100;
+
+    ui->horizontalForceSlider->setSliderPosition(sliderPosition);
+}
+
+void MainWindow::on_horizontalForceSlider_valueChanged(int value)
+{
+    double sliderRatio;
+
+    // slider moved -- the number of steps (100) is a parameter to the slider in mainwindow.ui
+    sliderRatio = double(value)/100.0;
+
+    P = MAX_FORCE * sliderRatio;
+
+    ui->appliedHorizontalForce->setValue(P);
+
+    this->doAnalysis();
+    this->updateSystemPlot();
+}
+
+void MainWindow::on_appliedVerticalForce_editingFinished()
+{
+    PV = ui->appliedHorizontalForce->value();
+
+    int sliderPosition = nearbyint(100.*PV/MAX_FORCE);
+    if (sliderPosition >  100) sliderPosition= 100;
+    if (sliderPosition < -100) sliderPosition=-100;
+
+    ui->verticalForceSlider->setSliderPosition(sliderPosition);
+}
+
+void MainWindow::on_verticalForceSlider_valueChanged(int value)
+{
+    double sliderRatio;
+
+    // slider moved -- the number of steps (100) is a parameter to the slider in mainwindow.ui
+    sliderRatio = double(value)/100.0;
+
+    PV = MAX_FORCE * sliderRatio;
+
+    ui->appliedVerticalForce->setValue(PV);
+
+    this->doAnalysis();
+    this->updateSystemPlot();
+}
+
+void MainWindow::on_appliedMoment_editingFinished()
+{
+    PMom = ui->appliedMoment->value();
+
+    int sliderPosition = nearbyint(100.*PMom/MAX_MOMENT);
+    if (sliderPosition >  100) sliderPosition= 100;
+    if (sliderPosition < -100) sliderPosition=-100;
+
+    ui->momentSlider->setSliderPosition(sliderPosition);
+}
+
+void MainWindow::on_momentSlider_valueChanged(int value)
+{
+    double sliderRatio;
+
+    // slider moved -- the number of steps (100) is a parameter to the slider in mainwindow.ui
+    sliderRatio = double(value)/100.0;
+
+    PMom = MAX_MOMENT * sliderRatio;
+
+    ui->appliedMoment->setValue(PMom);
+
+    this->doAnalysis();
+    this->updateSystemPlot();
+}
+
+
+
+
+
+void MainWindow::on_pushoverDisplacement_editingFinished()
+{
+    HDisp = ui->pushoverDisplacement->value();
+
+    int sliderPosition = nearbyint(100.*HDisp/MAX_DISP);
+    if (sliderPosition >  100) sliderPosition= 100;
+    if (sliderPosition < -100) sliderPosition=-100;
+
+    ui->pushoverDisplacementSlider->setSliderPosition(sliderPosition);
+}
+
+void MainWindow::on_pushoverDisplacementSlider_valueChanged(int value)
+{
+    double sliderRatio;
+
+    // slider moved -- the number of steps (100) is a parameter to the slider in mainwindow.ui
+    sliderRatio = double(value)/100.0;
+
+    HDisp = MAX_DISP * sliderRatio;
+
+    ui->pushoverDisplacement->setValue(HDisp);
+
+    this->doAnalysis();
+    this->updateSystemPlot();
+}
+
+void MainWindow::on_pulloutDisplacement_editingFinished()
+{
+    VDisp = ui->pulloutDisplacement->value();
+
+    int sliderPosition = nearbyint(100.*VDisp/MAX_DISP);
+    if (sliderPosition >  100) sliderPosition= 100;
+    if (sliderPosition < -100) sliderPosition=-100;
+
+    ui->pulloutDisplacementSlider->setSliderPosition(sliderPosition);
+}
+
+void MainWindow::on_pulloutDisplacementSlider_valueChanged(int value)
+{
+    double sliderRatio;
+
+    // slider moved -- the number of steps (100) is a parameter to the slider in mainwindow.ui
+    sliderRatio = double(value)/100.0;
+
+    VDisp = MAX_DISP * sliderRatio;
+
+    ui->pulloutDisplacement->setValue(VDisp);
+
+    this->doAnalysis();
+    this->updateSystemPlot();
+}
+
+
+
+
+
+
+void MainWindow::on_surfaceDisplacement_editingFinished()
+{
+    surfaceDisp = ui->surfaceDisplacement->value();
+
+    int sliderPosition = nearbyint(100.*surfaceDisp/MAX_DISP);
+    if (sliderPosition >  100) sliderPosition= 100;
+    if (sliderPosition < -100) sliderPosition=-100;
+
+    ui->surfaceDisplacementSlider->setSliderPosition(sliderPosition);
+}
+
+void MainWindow::on_surfaceDisplacementSlider_valueChanged(int value)
+{
+    double sliderRatio;
+
+    // slider moved -- the number of steps (100) is a parameter to the slider in mainwindow.ui
+    sliderRatio = double(value)/100.0;
+
+    surfaceDisp = MAX_DISP * sliderRatio;
+
+    ui->surfaceDisplacement->setValue(surfaceDisp);
+
+    this->doAnalysis();
+    this->updateSystemPlot();
+}
+
+void MainWindow::on_Interface12_editingFinished()
+{
+    percentage12 = ui->Interface12->value();
+
+    int sliderPosition = nearbyint(percentage12);
+    if (sliderPosition >  100) sliderPosition= 100;
+    if (sliderPosition < -100) sliderPosition=-100;
+
+    ui->Interface12Slider->setSliderPosition(sliderPosition);
+}
+
+void MainWindow::on_Interface12Slider_valueChanged(int value)
+{
+    double sliderRatio;
+
+    // slider moved -- the number of steps (100) is a parameter to the slider in mainwindow.ui
+    sliderRatio = double(value)/100.0;
+
+    percentage12 = sliderRatio;
+
+    ui->Interface12->setValue(percentage12);
+
+    this->doAnalysis();
+    this->updateSystemPlot();
+}
+
+void MainWindow::on_Interface23_editingFinished()
+{
+    percentage23 = ui->Interface23->value();
+
+    int sliderPosition = nearbyint(percentage23);
+    if (sliderPosition >  100) sliderPosition= 100;
+    if (sliderPosition < -100) sliderPosition=-100;
+
+    ui->Interface23Slider->setSliderPosition(sliderPosition);
+}
+
+void MainWindow::on_Interface23Slider_valueChanged(int value)
+{
+    double sliderRatio;
+
+    // slider moved -- the number of steps (100) is a parameter to the slider in mainwindow.ui
+    sliderRatio = double(value)/100.0;
+
+    percentage23 = sliderRatio;
+
+    ui->Interface23->setValue(percentage23);
+
+    this->doAnalysis();
+    this->updateSystemPlot();
+}
+
+void MainWindow::on_BaseDisplacement_editingFinished()
+{
+    percentageBase = ui->BaseDisplacement->value();
+
+    int sliderPosition = nearbyint(percentageBase);
+    if (sliderPosition >  100) sliderPosition= 100;
+    if (sliderPosition < -100) sliderPosition=-100;
+
+    ui->BaseDisplacementSlider->setSliderPosition(sliderPosition);
+}
+
+void MainWindow::on_BaseDisplacementSlider_valueChanged(int value)
+{
+    double sliderRatio;
+
+    // slider moved -- the number of steps (100) is a parameter to the slider in mainwindow.ui
+    sliderRatio = double(value)/100.0;
+
+    percentageBase = sliderRatio;
+
+    ui->BaseDisplacement->setValue(percentageBase);
+
+    this->doAnalysis();
+    this->updateSystemPlot();
+}
