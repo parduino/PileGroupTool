@@ -26,7 +26,7 @@
 #
 #     first time compile only:
 #     - open Terminal, navigate to your source folder
-#     - cd qwt-6.2
+#     - cd qwt-6.1
 #     - ~/Qt/5.10.0/clang_64/bin/qmake qwt.pro
 #     - make
 #
@@ -37,12 +37,15 @@
 #
 
 QT       += core gui
+unix: QT += svg opengl concurrent
+win32: QT += opengl printsupport
+
 
 greaterThan(QT_MAJOR_VERSION, 4): QT += widgets printsupport network
 
 TARGET   = PileGroupTool
 TEMPLATE = app
-VERSION  = 2.0.3
+VERSION  = 2.1.0
 
 #M_REV     = $Rev: $
 
@@ -55,21 +58,20 @@ DEFINES += APP_VERSION=\\\"$$VERSION\\\"
 unix:  QMAKE_CXXFLAGS_WARN_ON = -Wall -Wno-unused-variable -std=c++11
 win32: QMAKE_CXXFLAGS += /Y- -wd"4100"
 
-unix: DEPENDPATH += /usr/local/qwt-6.2.0-svn
+unix: DEPENDPATH += /usr/local/qwt-6.1.4
 win32: DEPENDPATH += C:\Qwt-6.1.3
 
 win32: include(C:\qwt-6.1.3\features\qwt.prf)
-unix: include(/usr/local/qwt-6.2.0-svn/features/qwt.prf)
+unix: include(/usr/local/qwt-6.1.4/features/qwt.prf)
 
 include(OPS_includes.pro)
 
 INCLUDEPATH += includes
 INCLUDEPATH += mainWindow
+INCLUDEPATH += widgets
 INCLUDEPATH += dialogs
 INCLUDEPATH += plots
 INCLUDEPATH += FEA
-
-unix: QT += svg
 
 SOURCES += main.cpp \
         mainWindow/mainwindow.cpp \
@@ -88,7 +90,9 @@ SOURCES += main.cpp \
         plots/resultplotsuper.cpp \
         plots/resultplotqwt.cpp \
         ../SimCenterCommon/Common/FooterWidget.cpp \
-        ../SimCenterCommon/Common/HeaderWidget.cpp
+        ../SimCenterCommon/Common/HeaderWidget.cpp \
+    widgets/sctrinputgroup.cpp \
+    utilWindows/dialogquicktips.cpp
         
 HEADERS  += \
         mainWindow/mainwindow.h \
@@ -105,14 +109,18 @@ HEADERS  += \
         plots/resultplotsuper.h \
         plots/resultplotqwt.h \
         ../SimCenterCommon/Common/FooterWidget.h \
-        ../SimCenterCommon/Common/HeaderWidget.h
+        ../SimCenterCommon/Common/HeaderWidget.h \
+    widgets/sctrinputgroup.h \
+    utilWindows/dialogquicktips.h
 
 FORMS    += mainWindow/mainwindow.ui \
         dialogs/materialdbinterface.ui \
         utilWindows/copyrightdialog.ui \
         utilWindows/dialogabout.ui \
         utilWindows/dialogpreferences.ui \
-        utilWindows/dialogfuturefeature.ui
+        utilWindows/dialogfuturefeature.ui \
+    widgets/sctrinputgroup.ui \
+    utilWindows/dialogquicktips.ui
 
 RESOURCES += \
 	qtpileresources.qrc

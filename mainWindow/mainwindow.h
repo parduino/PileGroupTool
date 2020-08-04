@@ -59,6 +59,7 @@ private slots:
     void on_actionProvide_Feedback_triggered();
 
     void on_action_About_triggered();
+    void on_actionQuick_Tips_triggered();
     void on_actionPreferences_triggered();
 
     // check boxes
@@ -76,15 +77,6 @@ private slots:
 
     void on_btn_deletePile_clicked();
     void on_btn_newPile_clicked();
-
-    // material table slots
-    void on_horizontalForceSlider_valueChanged(int value);
-    void on_verticalForceSlider_valueChanged(int value);
-    void on_momentSlider_valueChanged(int value);
-
-    void on_appliedHorizontalForce_editingFinished();
-    void on_appliedVerticalForce_editingFinished();
-    void on_appliedMoment_editingFinished();
 
     // layer selection slots
     void on_chkBox_layer1_clicked();
@@ -104,19 +96,20 @@ private slots:
     // Frank's network counter
     void replyFinished(QNetworkReply*);
 
+    // load control slots
     void on_forceTypeSelector_activated(int index);
-    void on_pushoverDisplacement_editingFinished();
-    void on_pulloutDisplacement_editingFinished();
-    void on_pushoverDisplacementSlider_valueChanged(int value);
-    void on_pulloutDisplacementSlider_valueChanged(int value);
-    void on_surfaceDisplacement_editingFinished();
-    void on_surfaceDisplacementSlider_valueChanged(int value);
-    void on_Interface12_editingFinished();
-    void on_Interface12Slider_valueChanged(int value);
-    void on_Interface23_editingFinished();
-    void on_Interface23Slider_valueChanged(int value);
-    void on_BaseDisplacement_editingFinished();
-    void on_BaseDisplacementSlider_valueChanged(int value);
+
+    void on_HForceCtrl_valueChanged(int value);
+    void on_VForceCtrl_valueChanged(int value);
+    void on_MomentCtrl_valueChanged(int value);
+
+    void on_PushOverCtrl_valueChanged(int value);
+    void on_PullOutCtrl_valueChanged(int value);
+
+    void on_SurfaceDisplacementCtrl_valueChanged(int value);
+    void on_Interface12Ctrl_valueChanged(int value);
+    void on_Interface23Ctrl_valueChanged(int value);
+    void on_BaseDisplacementCtrl_valueChanged(int value);
 
     // response to signals from systemPlot
     void onSystemPlot_pileSelected(int );
@@ -127,8 +120,8 @@ private:
     Q_OBJECT
     Ui::MainWindow *ui;
 
-    SystemPlotSuper *systemPlot = NULL;
-    PileFEAmodeler *pileFEAmodel = NULL;
+    SystemPlotSuper *systemPlot = nullptr;
+    PileFEAmodeler *pileFEAmodel = nullptr;
 
     void updateSystemPlot();
     void refreshUI();
@@ -186,7 +179,7 @@ private:
     bool inSetupState = true;
 
     // system conforming settings and parameters
-    QSettings *settings = NULL;
+    QSettings *settings = nullptr;
 
     // general settings
     QString useGraphicsLib;  // "QCP" or "QwtAll" or "QwtSystem" or "QwtResults"

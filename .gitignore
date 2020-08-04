@@ -65,3 +65,15 @@ qwt-6.2/lib/pkgconfig/Qt5Qwt6.pc
 qwt-6.2/lib/qwtmathml.pc
 qwt-6.2/lib/pkgconfig/Qt5Qwt6.pc
 qwt-6.2/lib/qwtmathml.pc
+
+*.swp
+
+*.dmg
+
+PGTinstaller/packages/nheri\.simcenter\.pgt/data/PileGroupTool/
+
+PileGroupTool\.pro\.user\.4\.8-pre1
+
+PileGroupTool\.pro\.user\.4\.9-pre1
+
+PileGroupTool.pro.user.4.10-pre1

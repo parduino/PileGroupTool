@@ -1,3 +1,5 @@
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.1410668.svg)](https://doi.org/10.5281/zenodo.1410668)
+
 ![missing PGT logo][logo]
 
 [logo]: https://nheri-simcenter.github.io/PileGroupTool/docs/NHERI-PGT-Icon.png "Pile Group Tool Logo"
@@ -25,13 +27,19 @@ The soil-structure system is modeled using a finite-element platform. Piles are 
 
 ## Downloads
 
-* __download a binary version__ of the latest release on [simcenter.designsafe-ci.org/learning-tools/pile-group-application/](https://simcenter.designsafe-ci.org/learning-tools/pile-group-application/)
-* __download the source__ of latest release at [github.com/NHERI-SimCenter/PileGroupTool/releases](https://github.com/NHERI-SimCenter/PileGroupTool/releases)
+* __download a binary version__ of the latest release on [simcenter.designsafe-ci.org/learning-tools/pile-group-tool/](https://simcenter.designsafe-ci.org/learning-tools/pile-group-tool/)
 
 ## Software class documentation
 
+* Documentation main page: [https://nheri-simcenter.github.io/PileGroupTool/](https://nheri-simcenter.github.io/PileGroupTool/)
 * An (as-yet-incomplete) documentation of the code can be found at: [nheri-simcenter.github.io/PileGroupTool/docs/index.html](https://nheri-simcenter.github.io/PileGroupTool/docs/index.html)
 * view the source on [github.com/NHERI-SimCenter/PileGroupTool](https://github.com/NHERI-SimCenter/PileGroupTool)
+
+Please visit the [Pile Group Tool webpage](https://simcenter.designsafe-ci.org/learning-tools/pile-group-tool/)
+for more resources related to this tool. Additionally, this page
+provides more information on the NHERI SimCenter, including other SimCenter
+applications, FAQ, and how to collaborate.
+
 
 # References:
 
